@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Área do Profissional - Sistema de Senhas</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="header">
+        <div class="header-content">
+            <img src="logosepem.png" alt="Logo SEPEM" class="header-logo">
+            <div class="header-title-section">
+                <h1>Área do Profissional</h1>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="main-content">
+            <div class="section">
+                <h2>Informações da Sala</h2>
+                <div id="sala-info" class="status-info">
+                    <h4>Sala: <span id="sala-nome">Carregando...</span></h4>
+                    <p id="sala-descricao">Carregando descrição...</p>
+                </div>
+
+                <div class="form-group">
+                    <label for="nome-profissional">Nome do Profissional:</label>
+                    <input type="text" id="nome-profissional" class="form-control" placeholder="Digite seu nome">
+                </div>
+
+                <div id="senha-atual-container" class="senha-atual" style="display: none;">
+                    <h3>Senha Atual em Atendimento</h3>
+                    <div class="senha-numero" id="senha-atual-numero">-</div>
+                    <p>Profissional: <span id="senha-atual-profissional">-</span></p>
+                    <p>Chamada às: <span id="senha-atual-horario">-</span></p>
+                </div>
+
+                <div class="form-group">
+                    <button class="btn btn-primary btn-large" onclick="chamarProximaSenha()">Chamar Próxima Senha</button>
+                </div>
+
+                <div class="form-group">
+                    <button class="btn btn-warning btn-large" onclick="chamarUltimaSenhaNovamente()">Chamar Última Senha Novamente</button>
+                </div>
+
+                <div class="form-group">
+                    <button class="btn btn-success" onclick="finalizarAtendimento()">Finalizar Atendimento</button>
+                </div>
+
+                <div class="form-group">
+                    <button class="btn btn-danger" onclick="resetarSala()">Reset da Sala (Dev)</button>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>Fila de Espera</h2>
+                <div id="fila-senhas" class="fila-senhas">
+                    <p>Carregando fila...</p>
+                </div>
+            </div>
+        </div>
+
+        <div style="text-align: center; margin-top: 20px;">
+            <a href="index.html" class="btn btn-secondary">Voltar ao Início</a>
+        </div>
+    </div>
+
+    <div class="footer">
+        ⚡ DESENVOLVIDO POR SAULO RODRIGO REG. 36.364-8 - 2025
+    </div>
+
+    <script src="api.js"></script>
+    <script>
+        let salaAtual = null;
+        let nomeProfissional = '';
+
+        async function carregarSalaAtual() {
+            const salaSalva = localStorage.getItem('salaAtual');
+            if (!salaSalva) {
+                alert('Nenhuma sala selecionada. Redirecionando para a página inicial.');
+                window.location.href = 'index.html';
+                return;
+            }
+
+            salaAtual = JSON.parse(salaSalva);
+            
+            try {
+                const sala = await SalaAPI.obterSala(salaAtual.id);
+                document.getElementById('sala-nome').textContent = sala.nome;
+                document.getElementById('sala-descricao').textContent = sala.descricao;
+                
+                // Carregar nome do profissional salvo
+                const nomeSalvo = localStorage.getItem(`profissional_${salaAtual.id}`);
+                if (nomeSalvo) {
+                    document.getElementById('nome-profissional').value = nomeSalvo;
+                    nomeProfissional = nomeSalvo;
+                }
+            } catch (error) {
+                console.error('Erro ao carregar sala:', error);
+                alert('Erro ao carregar informações da sala.');
+            }
+        }
+
+        async function carregarSenhaAtual() {
+            try {
+                const senhaAtual = await SenhaAPI.obterSenhaAtual(salaAtual.id);
+                const container = document.getElementById('senha-atual-container');
+                
+                if (senhaAtual) {
+                    document.getElementById('senha-atual-numero').textContent = senhaAtual.numero;
+                    document.getElementById('senha-atual-profissional').textContent = senhaAtual.profissional || 'Não informado';
+                    document.getElementById('senha-atual-horario').textContent = new Date(senhaAtual.chamada_em).toLocaleTimeString();
+                    container.style.display = 'block';
+                } else {
+                    container.style.display = 'none';
+                }
+            } catch (error) {
+                console.error('Erro ao carregar senha atual:', error);
+            }
+        }
+
+        async function carregarFilaEspera() {
+            try {
+                const senhas = await SenhaAPI.listarSenhasEspera(salaAtual.id);
+                const container = document.getElementById('fila-senhas');
+                
+                if (senhas.length === 0) {
+                    container.innerHTML = '<p>Nenhuma senha na fila de espera.</p>';
+                    return;
+                }
+                
+                container.innerHTML = senhas.map(senha => `
+                    <div class="senha-item">
+                        <span class="senha-numero">${senha.numero}</span>
+                        <span class="senha-status">Aguardando</span>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Erro ao carregar fila:', error);
+                document.getElementById('fila-senhas').innerHTML = '<p>Erro ao carregar fila de espera.</p>';
+            }
+        }
+
+        async function chamarProximaSenha() {
+            try {
+                const resultado = await SenhaAPI.chamarSenha(salaAtual.id, nomeProfissional);
+                alert(`Senha ${resultado.numero} chamada com sucesso!`);
+                await atualizarDados();
+            } catch (error) {
+                console.error('Erro ao chamar senha:', error);
+                alert('Erro ao chamar senha: ' + error.message);
+            }
+        }
+
+        async function chamarUltimaSenhaNovamente() {
+            try {
+                const resultado = await SenhaAPI.chamarUltimaSenhaNovamente(salaAtual.id, nomeProfissional);
+                
+                // Tocar som de chamada
+                try {
+                    const audio = new Audio('chamada.wav');
+                    audio.play().catch(e => {
+                        console.log('Erro ao tocar áudio:', e);
+                        // Fallback: gerar som via Web Audio API
+                        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                        const oscillator = audioContext.createOscillator();
+                        const gainNode = audioContext.createGain();
+                        
+                        oscillator.connect(gainNode);
+                        gainNode.connect(audioContext.destination);
+                        
+                        oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+                        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                        
+                        oscillator.start();
+                        oscillator.stop(audioContext.currentTime + 0.5);
+                    });
+                } catch (audioError) {
+                    console.log('Erro ao reproduzir som:', audioError);
+                }
+                
+                alert(resultado.message);
+                await atualizarDados();
+            } catch (error) {
+                console.error('Erro ao chamar última senha novamente:', error);
+                alert('Erro ao chamar última senha novamente: ' + error.message);
+            }
+        }
+
+        async function finalizarAtendimento() {
+            try {
+                await SenhaAPI.finalizarAtendimento(salaAtual.id);
+                alert('Atendimento finalizado com sucesso!');
+                await atualizarDados();
+            } catch (error) {
+                console.error('Erro ao finalizar atendimento:', error);
+                alert('Erro ao finalizar atendimento: ' + error.message);
+            }
+        }
+
+        async function resetarAtendimento() {
+            if (!confirm('Tem certeza que deseja resetar o display da TV? Isso irá limpar todas as senhas chamadas.')) {
+                return;
+            }
+
+            try {
+                await SenhaAPI.resetarAtendimento();
+                alert('Display da TV resetado com sucesso!');
+                await atualizarDados();
+            } catch (error) {
+                console.error('Erro ao resetar atendimento:', error);
+                alert('Erro ao resetar atendimento: ' + error.message);
+            }
+        }
+
+        async function resetarSala() {
+            if (!confirm('Tem certeza que deseja resetar todas as senhas desta sala? Esta ação não pode ser desfeita.')) {
+                return;
+            }
+
+            try {
+                await SenhaAPI.resetarSala(salaAtual.id);
+                alert('Sala resetada com sucesso!');
+                await atualizarDados();
+            } catch (error) {
+                console.error('Erro ao resetar sala:', error);
+                alert('Erro ao resetar sala: ' + error.message);
+            }
+        }
+
+        async function atualizarDados() {
+            await Promise.all([
+                carregarSenhaAtual(),
+                carregarFilaEspera()
+            ]);
+        }
+
+        // Salvar nome do profissional quando digitado
+        document.getElementById('nome-profissional').addEventListener('input', function() {
+            nomeProfissional = this.value.trim();
+            if (nomeProfissional) {
+                localStorage.setItem(`profissional_${salaAtual.id}`, nomeProfissional);
+            }
+        });
+
+        // Inicialização
+        document.addEventListener('DOMContentLoaded', async function() {
+            await carregarSalaAtual();
+            await atualizarDados();
+            
+            // Atualizar dados a cada 5 segundos
+            setInterval(atualizarDados, 5000);
+        });
+    </script>
+</body>
+</html>
+
